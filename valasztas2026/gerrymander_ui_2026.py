@@ -1,10 +1,8 @@
 
-
 from __future__ import annotations
 
 import json
 import math
-import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -489,34 +487,6 @@ def county_comparison(original: gpd.GeoDataFrame | None, simulated: gpd.GeoDataF
     return out
 
 
-def wasted_votes_table(districts: gpd.GeoDataFrame) -> pd.DataFrame:
-    rows = []
-    for r in districts.itertuples(index=False):
-        target = float(getattr(r, "target_votes"))
-        opp = float(getattr(r, "opponent_votes"))
-        total = target + opp
-        needed = math.floor(total / 2) + 1
-        if bool(getattr(r, "target_wins")):
-            target_wasted = max(0, target - needed)
-            opp_wasted = opp
-        else:
-            target_wasted = target
-            opp_wasted = max(0, opp - needed)
-        rows.append({
-            "plan": getattr(r, "plan"),
-            "district_id": getattr(r, "district_id"),
-            "megye": getattr(r, "megye"),
-            "target_wins": bool(getattr(r, "target_wins")),
-            "target_votes": target,
-            "opponent_votes": opp,
-            "target_margin_pct": getattr(r, "target_margin_pct"),
-            "target_wasted_votes": round(target_wasted, 1),
-            "opponent_wasted_votes": round(opp_wasted, 1),
-            "efficiency_gap_piece": round((opp_wasted - target_wasted) / max(total, 1), 5),
-        })
-    return pd.DataFrame(rows)
-
-
 # Térképek
 
 def party_color(col: str, fallback: str) -> str:
@@ -600,61 +570,6 @@ def save_winner_map(districts: gpd.GeoDataFrame, out_html: Path, cfg: RunConfig,
     m.save(out_html)
 
 
-def save_numeric_map(districts: gpd.GeoDataFrame, column: str, out_html: Path, title: str, colors=None, reverse=False) -> None:
-    if column not in districts.columns:
-        return
-    web = simplify_for_web(districts)
-    vals = pd.to_numeric(web[column], errors="coerce").dropna()
-    if vals.empty:
-        return
-    vmin = float(vals.quantile(0.02))
-    vmax = float(vals.quantile(0.98))
-    if vmin == vmax:
-        vmax = vmin + 1
-    if colors is None:
-        colors = ["#f7f7f7", "#08306b"]
-    if reverse:
-        colors = list(reversed(colors))
-    cmap = LinearColormap(colors, vmin=vmin, vmax=vmax)
-    cmap.caption = title
-
-    m = folium.Map(location=[47.16, 19.5], zoom_start=7, tiles="CartoDB positron")
-
-    def style(feature):
-        v = feature["properties"].get(column, vmin)
-        try:
-            v = float(v)
-        except Exception:
-            v = vmin
-        return {"fillColor": cmap(v), "color": "#222222", "weight": 1.0, "fillOpacity": 0.72}
-
-    fields = tooltip_fields(web, [
-        "district_id", "megye", column, "target_margin_pct", "target_wins",
-        "valasztopolgar", "polsby_popper", "bp_keruletek",
-    ])
-    folium.GeoJson(web, name=title, style_function=style,
-                   tooltip=folium.GeoJsonTooltip(fields=fields, localize=True, sticky=False)).add_to(m)
-    cmap.add_to(m)
-    folium.LayerControl().add_to(m)
-    m.save(out_html)
-
-
-def save_unit_assignment_map(units: gpd.GeoDataFrame, out_html: Path) -> None:
-    web = simplify_for_web(units, meters=35)
-    m = folium.Map(location=[47.16, 19.5], zoom_start=7, tiles="CartoDB positron")
-
-    def style(feature):
-        typ = str(feature["properties"].get("egyseg_tipus", ""))
-        color = "#4e79a7" if "voronoi" in typ else "#59a14f"
-        return {"fillColor": color, "color": "#333333", "weight": 0.25, "fillOpacity": 0.55}
-
-    fields = tooltip_fields(web, ["node_id", "telepules", "egyseg_tipus", "uj_oevk", "oevk_id", "valasztopolgar", "szavazokor_db"])
-    folium.GeoJson(web, name="Elemzési egységek", style_function=style,
-                   tooltip=folium.GeoJsonTooltip(fields=fields, localize=True, sticky=False)).add_to(m)
-    folium.LayerControl().add_to(m)
-    m.save(out_html)
-
-
 def save_placeholder_html(out_html: Path, title: str, message: str) -> None:
     out_html.write_text(
         f"""<!doctype html><html lang='hu'><head><meta charset='utf-8'><title>{title}</title></head>
@@ -663,14 +578,6 @@ def save_placeholder_html(out_html: Path, title: str, message: str) -> None:
         </body></html>""",
         encoding="utf-8",
     )
-
-
-def save_budapest_map(sim: gpd.GeoDataFrame, out_html: Path, cfg: RunConfig) -> None:
-    bp = sim[sim["megye_slug"] == "budapest"].copy()
-    if bp.empty:
-        save_placeholder_html(out_html, "Budapest térkép", "Ebben a futásban nem volt budapesti szimulált körzet.")
-        return
-    save_margin_map(bp, out_html, cfg, "Budapest - szimulált target margin és Duna/kerület infó")
 
 
 # PNG
@@ -769,7 +676,7 @@ def save_png_charts(original: gpd.GeoDataFrame | None, simulated: gpd.GeoDataFra
 
 # mentések
 
-def save_everything(units: gpd.GeoDataFrame, logs: pd.DataFrame, graph, cfg: RunConfig) -> None:
+def save_everything(units: gpd.GeoDataFrame, graph, cfg: RunConfig) -> None:
     out_dir = cfg.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -799,7 +706,7 @@ def save_everything(units: gpd.GeoDataFrame, logs: pd.DataFrame, graph, cfg: Run
     sim_cols = [
         "uj_oevk", "megye", "valasztopolgar", "target_votes", "opponent_votes",
         "target_pct", "opponent_pct", "target_margin_pct", "target_wins",
-        "polsby_popper", "pop_deviation_abs_pct", "bp_keruletek",
+        "polsby_popper", "pop_deviation_pct", "bp_keruletek",
     ]
     sim_cols = [c for c in sim_cols if c in sim_districts.columns]
     sim_table = sim_districts[sim_cols].copy().rename(columns={"uj_oevk": "district_id"})
@@ -809,7 +716,7 @@ def save_everything(units: gpd.GeoDataFrame, logs: pd.DataFrame, graph, cfg: Run
         orig_cols = [
             "oevk_id", "megye", "valasztopolgar", "target_votes", "opponent_votes",
             "target_pct", "opponent_pct", "target_margin_pct", "target_wins",
-            "polsby_popper", "pop_deviation_abs_pct", "bp_keruletek",
+            "polsby_popper", "pop_deviation_pct", "bp_keruletek",
         ]
         orig_cols = [c for c in orig_cols if c in orig_districts.columns]
         orig_table = orig_districts[orig_cols].copy().rename(columns={"oevk_id": "district_id"})
@@ -894,16 +801,9 @@ def run_with_config(cfg: RunConfig) -> None:
 
     units = units[units["_node"].isin(graph.nodes)].copy()
 
-    # Kompatibilitás
-    opt_result = algo.optimize_all(units, graph)
-    if isinstance(opt_result, tuple):
-        result_units, logs = opt_result
-    else:
-        result_units = opt_result
-        import pandas as pd
-        logs = pd.DataFrame()
+    result_units = algo.optimize_all(units, graph)
 
-    save_everything(result_units, logs, graph, cfg)
+    save_everything(result_units, graph, cfg)
 
     print("\nKész.")
 
