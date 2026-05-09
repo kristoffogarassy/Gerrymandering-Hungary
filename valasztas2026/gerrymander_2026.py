@@ -918,6 +918,13 @@ def optimize_county(
             best_assign = dict(assign)
             best_parts = dict(cur_parts)
 
+        if best_parts["wins"] == k and best_parts["pop_hard"] == 0:
+            print(
+                f"  restart {restart_id}, step {step}: minden körzet a target-é, "
+                f"populáció rendben – korai kilépés."
+            )
+            break
+
         if step % 250 == 0 or step == STEPS_PER_RESTART:
             print(
                 f"  restart {restart_id}, step {step:>5}: "
@@ -929,6 +936,19 @@ def optimize_county(
 
     return best_assign, best_parts
 
+def target_wins_all_current(county_gdf: gpd.GeoDataFrame, k: int) -> bool:
+    if "oevk_id" not in county_gdf.columns:
+        return False
+    try:
+        tally = county_gdf.groupby("oevk_id").agg(
+            target_sum=("_target_votes", "sum"),
+            opp_sum=("_opponent_votes", "sum"),
+        )
+        if len(tally) != k:
+            return False
+        return bool((tally["target_sum"] > tally["opp_sum"]).all())
+    except Exception:
+        return False
 
 def optimize_all(gdf: gpd.GeoDataFrame, graph: nx.Graph) -> gpd.GeoDataFrame:
     rng_master = random.Random(RANDOM_SEED)
@@ -951,6 +971,20 @@ def optimize_all(gdf: gpd.GeoDataFrame, graph: nx.Graph) -> gpd.GeoDataFrame:
 
         k = county_quota(county_gdf, "_county", "_county_code")
 
+        if target_wins_all_current(county_gdf, k):
+            print(
+                f"\n{county_name}: a {TARGET_COL} már most viszi mind a {k} körzetet, "
+                f"optimalizáció kihagyva, eredeti OEVK megtartva."
+            )
+            nodes = list(county_gdf["_node"].astype(str))
+            kept = current_oevk_assignment(county_gdf, nodes, k)
+            if kept is not None:
+                for n, lab in kept.items():
+                    out.loc[out["_node"] == n, "recom_label"] = int(lab)
+                    out.loc[out["_node"] == n, "uj_oevk"] = f"{county_slug}-{lab + 1:02d}"
+            continue
+
+
         best_county_assign = None
         best_county_parts = None
         best_county_score = -float("inf")
@@ -963,6 +997,10 @@ def optimize_all(gdf: gpd.GeoDataFrame, graph: nx.Graph) -> gpd.GeoDataFrame:
                 best_county_score = parts["score"]
                 best_county_assign = assign
                 best_county_parts = parts
+
+            if best_county_parts["wins"] == k and best_county_parts["pop_hard"] == 0:
+                print(f"{county_name}: max mandátum elérve, többi restart kihagyva.")
+                break
 
         assert best_county_assign is not None
 
