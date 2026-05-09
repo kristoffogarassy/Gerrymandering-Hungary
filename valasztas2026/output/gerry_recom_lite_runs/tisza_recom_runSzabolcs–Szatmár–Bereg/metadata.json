@@ -1,0 +1,27 @@
+{
+  "run_name": "tisza_recom_runSzabolcs–Szatmár–Bereg",
+  "created_at_unix": 1778297090.21201,
+  "input_geojson": "output/egysegek_2026.geojson",
+  "output_dir": "output/gerry_recom_lite_runs/tisza_recom_runSzabolcs–Szatmár–Bereg",
+  "target_col": "tisza_szavazat",
+  "opponent_col": "fidesz_szavazat",
+  "pop_col": "valasztopolgar",
+  "counties": [
+    "Szabolcs–Szatmár–Bereg"
+  ],
+  "epsilon": 0.12,
+  "restarts": 5,
+  "steps_per_restart": 3000,
+  "recom_probability": 0.78,
+  "random_seed": 20260508,
+  "compactness_weight_cut_length": 0.04,
+  "seat_weight": 350000.0,
+  "pop_penalty_weight": 220000.0,
+  "bp_kerulet_split_weight": 70000.0,
+  "duna_mixed_weight": 35000.0,
+  "duna_edge_weight": 6000.0,
+  "graph_nodes": 4193,
+  "graph_edges": 11301,
+  "simulated_districts": 6,
+  "simulated_target_seats": 5
+}
