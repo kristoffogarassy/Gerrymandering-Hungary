@@ -1,1 +1,1 @@
-data/teruletek/Korzet_levalogatas20260116_ORSZAGOS.csv
+echo "valasztas2026/data/Korzet_levalogatas20260116_ORSZAGOS.csv" >> .gitignore
